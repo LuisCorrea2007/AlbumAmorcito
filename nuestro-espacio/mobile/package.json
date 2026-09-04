@@ -1,0 +1,62 @@
+{
+  "name": "nuestro-espacio-mobile",
+  "version": "1.0.0",
+  "description": "Private couples ecosystem mobile app - React Native CLI",
+  "main": "index.js",
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "start": "react-native start",
+    "clean": "react-native clean-project-auto",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "type-check": "tsc --noEmit",
+    "test": "jest",
+    "pod-install": "cd ios && pod install && cd ..",
+    "build:android": "cd android && ./gradlew assembleRelease",
+    "build:ios": "react-native bundle --entry-file='index.js' --bundle-output='./ios/main.jsbundle' --dev=false --platform='ios'"
+  },
+  "dependencies": {
+    "@react-navigation/bottom-tabs": "^6.5.11",
+    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/stack": "^6.3.20",
+    "@tanstack/react-query": "^5.14.2",
+    "axios": "^1.6.2",
+    "date-fns": "^3.0.6",
+    "lottie-react-native": "^6.5.1",
+    "react": "18.2.0",
+    "react-native": "0.73.2",
+    "react-native-gesture-handler": "^2.14.0",
+    "react-native-haptic-feedback": "^2.2.0",
+    "react-native-mmkv": "^2.11.0",
+    "react-native-reanimated": "^3.6.1",
+    "react-native-safe-area-context": "^4.8.2",
+    "react-native-screens": "^3.29.0",
+    "react-native-socket.io-client": "^1.0.2",
+    "react-native-vector-icons": "^10.0.3",
+    "socket.io-client": "^4.6.1",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.6",
+    "@babel/preset-env": "^7.23.6",
+    "@babel/runtime": "^7.23.6",
+    "@react-native/babel-preset": "^0.73.19",
+    "@react-native/eslint-config": "^0.73.2",
+    "@react-native/metro-config": "^0.73.3",
+    "@react-native/typescript-config": "^0.73.1",
+    "@types/jest": "^29.5.11",
+    "@types/react": "^18.2.45",
+    "@types/react-native-haptic-feedback": "^1.5.3",
+    "@types/react-test-renderer": "^18.0.7",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.1.1",
+    "react-native-clean-project": "^4.0.3",
+    "react-test-renderer": "18.2.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
