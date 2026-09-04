@@ -1,0 +1,312 @@
+// Prisma Schema for Nuestro Espacio
+// Optimized for privacy-first, self-hosted couples ecosystem
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USERS & AUTHENTICATION
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String    // Hashed with bcrypt
+  displayName   String?
+  avatar        String?   // Path to local file
+  partnerId     String?   @unique
+  partner       User?     @relation("CoupleRelation", fields: [partnerId], references: [id], onDelete: SetNull)
+  mood          Mood?
+  notes         Note[]
+  sentCapsules  Capsule[] @relation("SenderCapsules")
+  receivedCapsules Capsule[] @relation("ReceiverCapsules")
+  timelineEvents TimelineEvent[]
+  media         Media[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([email])
+  @@index([partnerId])
+}
+
+// ============================================
+// MOOD STATE (Real-time synchronized)
+// ============================================
+
+model Mood {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  value       Int      // 1-5 scale or custom enum
+  color       String?  // Hex color that affects app theme
+  note        String?  @db.Text
+  lastSynced  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([lastSynced])
+}
+
+// ============================================
+// NOTES (With reply threads)
+// ============================================
+
+model Note {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Note?     @relation("NoteThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Note[]    @relation("NoteThread")
+  content     String    @db.Text
+  isEncrypted Boolean   @default(false)
+  encryptionKey String? // If encrypted, store key separately
+  attachments NoteAttachment[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // Soft delete
+
+  @@index([userId])
+  @@index([parentId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model NoteAttachment {
+  id        String   @id @default(uuid())
+  noteId    String
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  filePath  String   // Local path on server
+  fileType  String   // image, video, audio, document
+  fileSize  Int      // In bytes
+  thumbnail String?  // Path to thumbnail if applicable
+  createdAt DateTime @default(now())
+
+  @@index([noteId])
+}
+
+// ============================================
+// TIME CAPSULES (Scheduled reveal)
+// ============================================
+
+model Capsule {
+  id            String    @id @default(uuid())
+  senderId      String
+  sender        User      @relation("SenderCapsules", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId    String
+  receiver      User      @relation("ReceiverCapsules", fields: [receiverId], references: [id], onDelete: Cascade)
+  title         String
+  content       String    @db.Text
+  media         CapsuleMedia[]
+  revealDate    DateTime
+  isRevealed    Boolean   @default(false)
+  revealedAt    DateTime?
+  isEncrypted   Boolean   @default(true)
+  encryptionKey String?   // Encrypted with receiver's key
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([revealDate])
+  @@index([isRevealed])
+  @@index([revealDate, isRevealed]) // For cron job optimization
+}
+
+model CapsuleMedia {
+  id        String   @id @default(uuid())
+  capsuleId String
+  capsule   Capsule  @relation(fields: [capsuleId], references: [id], onDelete: Cascade)
+  filePath  String   // Local path on server
+  fileType  String   // image, video
+  fileSize  Int
+  thumbnail String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([capsuleId])
+}
+
+// ============================================
+// TIMELINE / STORYLINE (Relationship milestones)
+// ============================================
+
+model TimelineEvent {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?  @db.Text
+  date        DateTime // Date of the event in history
+  location    String?
+  media       TimelineMedia[]
+  isPrivate   Boolean  @default(false) // Only visible to creator until shared
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([date])
+  @@index([isPrivate])
+}
+
+model TimelineMedia {
+  id          String         @id @default(uuid())
+  timelineId  String
+  timeline    TimelineEvent  @relation(fields: [timelineId], references: [id], onDelete: Cascade)
+  filePath    String         // Local path on server
+  fileType    String         // image, video
+  fileSize    Int
+  thumbnail   String?
+  caption     String?
+  order       Int            @default(0)
+  createdAt   DateTime       @default(now())
+
+  @@index([timelineId])
+}
+
+// ============================================
+// MEDIA GALLERY (All uploaded files)
+// ============================================
+
+model Media {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  filePath    String   // Local path on server: /uploads/images/uuid.jpg
+  fileType    String   // image, video
+  mimeType    String   // image/jpeg, video/mp4, etc.
+  fileSize    Int      // In bytes
+  width       Int?     // For images/videos
+  height      Int?     // For images/videos
+  duration    Int?     // For videos (seconds)
+  thumbnail   String?  // Path to generated thumbnail
+  metadata    Json?    // EXIF data, location, etc.
+  isFavorite  Boolean  @default(false)
+  tags        String[] // Array of tags for search
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime? // Soft delete
+
+  @@index([userId])
+  @@index([fileType])
+  @@index([createdAt])
+  @@index([isFavorite])
+  @@index([deletedAt])
+  @@index([userId, fileType, createdAt]) // Composite index for gallery queries
+}
+
+// ============================================
+// DATE ROULETTE (Predefined activities)
+// ============================================
+
+model DateActivity {
+  id          String   @id @default(uuid())
+  title       String
+  description String?  @db.Text
+  category    String   // home, outdoor, creative, romantic, adventure, etc.
+  duration    Int?     // Estimated duration in minutes
+  costLevel   Int?     // 1-5 scale (free to expensive)
+  participants Int     @default(2) // Number of people
+  requirements String? @db.Text // What's needed
+  isActive    Boolean  @default(true)
+  usedCount   Int      @default(0) // Track how many times selected
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([isActive])
+}
+
+model DateHistory {
+  id          String   @id @default(uuid())
+  userId      String
+  activityId  String
+  activity    DateActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  completedAt DateTime @default(now())
+  rating      Int?     // 1-5 stars
+  notes       String?  @db.Text
+  photos      String[] // Array of media file paths from this date
+
+  @@index([userId])
+  @@index([activityId])
+  @@index([completedAt])
+}
+
+// ============================================
+// CALENDAR EVENTS (Appointments & Reminders)
+// ============================================
+
+model CalendarEvent {
+  id          String   @id @default(uuid())
+  userId      String
+  title       String
+  description String?  @db.Text
+  startDate   DateTime
+  endDate     DateTime
+  location    String?
+  isAllDay    Boolean  @default(false)
+  reminder    Int?     // Minutes before event (null = no reminder)
+  isRecurring Boolean  @default(false)
+  recurrencePattern String? // Daily, weekly, monthly, custom
+  color       String?  @default("#FF6B6B") // Event color
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([isRecurring])
+}
+
+// ============================================
+// SYNC TRACKING (Offline-first synchronization)
+// ============================================
+
+model SyncLog {
+  id          String   @id @default(uuid())
+  userId      String
+  deviceInfo  String   // Device identifier
+  entityType  String   // note, media, capsule, etc.
+  entityId    String
+  action      String   // create, update, delete
+  payload     Json?    // Changed data
+  synced      Boolean  @default(false)
+  syncedAt    DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([synced])
+  @@index([createdAt])
+}
+
+// ============================================
+// NOTIFICATION LOGS (Local + Socket notifications)
+// ============================================
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  title       String
+  message     String   @db.Text
+  type        String   // thinking, mood, note, capsule, calendar, system
+  relatedEntityType String?
+  relatedEntityId   String?
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+}

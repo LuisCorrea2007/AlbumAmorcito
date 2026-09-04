@@ -1,0 +1,124 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: nuestro-espacio-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-nuestroespacio}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-securepassword123}
+      POSTGRES_DB: ${DB_NAME:-nuestro_espacio}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    networks:
+      - nuestro-espacio-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-nuestroespacio} -d ${DB_NAME:-nuestro_espacio}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # ============================================
+  # Backend API (Node.js + Express + Socket.io)
+  # ============================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: nuestro-espacio-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${BACKEND_PORT:-3000}
+      DATABASE_URL: postgresql://${DB_USER:-nuestroespacio}:${DB_PASSWORD:-securepassword123}@postgres:5432/${DB_NAME:-nuestro_espacio}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      UPLOAD_DIR: /app/uploads
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-52428800} # 50MB
+      THUMBNAIL_WIDTH: ${THUMBNAIL_WIDTH:-400}
+      THUMBNAIL_HEIGHT: ${THUMBNAIL_HEIGHT:-400}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      SOCKET_CORS_ORIGIN: ${SOCKET_CORS_ORIGIN:-*}
+    volumes:
+      - ./backend:/app
+      - backend_uploads:/app/uploads
+      - /app/node_modules
+    ports:
+      - "${BACKEND_PORT:-3000}:${BACKEND_PORT:-3000}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nuestro-espacio-network
+    command: >
+      sh -c "npm install && 
+             npx prisma generate && 
+             npx prisma migrate deploy && 
+             npm run dev"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT:-3000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # ============================================
+  # Nginx Reverse Proxy (Optional for local dev)
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: nuestro-espacio-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_SSL_PORT:-443}:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/ssl:/etc/nginx/ssl:ro
+      - backend_uploads:/var/www/uploads:ro
+    depends_on:
+      - backend
+    networks:
+      - nuestro-espacio-network
+    profiles:
+      - with-nginx  # Only start with: docker-compose --profile with-nginx up
+
+volumes:
+  postgres_data:
+    driver: local
+    name: nuestro-espacio-postgres-data
+  backend_uploads:
+    driver: local
+    name: nuestro-espacio-uploads
+
+networks:
+  nuestro-espacio-network:
+    driver: bridge
+    name: nuestro-espacio-network
+
+# ============================================
+# Development overrides
+# ============================================
+# Use docker-compose.dev.yml for development-specific configurations
